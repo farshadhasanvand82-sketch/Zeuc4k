@@ -2,28 +2,28 @@ import os
 import cv2
 import threading
 from flask import Flask
-from telethon import TelegramClient, events
+from pyrogram import Client, filters
+from pyrogram.types import Message
+
+# راه‌اندازی سرور وب فلاسْک روی ترد اصلی برای پاسخ به رندر
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Robot is up and running!"
 
 # اطلاعات تلگرام و توکن ربات
 API_ID = 611335
 API_HASH = "d524b414d21f4d37f08684c1df41ac9d"
 BOT_TOKEN = "9232669247:AAGhQMuFITXbT-w-G-4qsAB9njUPFNO9y-E"
 
-# پورت وب‌سرویس برای رندر
-PORT = int(os.environ.get("PORT", 10000))
-
-# راه‌اندازی سرور وب برای پاسخ به درخواست‌های Render
-web_app = Flask(__name__)
-
-@web_app.route('/')
-def home():
-    return "Robot is up and running!"
-
-def run_web():
-    web_app.run(host="0.0.0.0", port=PORT)
-
-# راه‌اندازی کلاینت ربات با Telethon
-client = TelegramClient('bot_session', API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+# کلاینت ربات تلگرام
+bot = Client(
+    "image_upscaler_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
 
 def upscale_image(input_path: str, output_path: str):
     """افزایش کیفیت و وضوح تصویر با الگوریتم‌های OpenCV"""
@@ -45,42 +45,36 @@ def upscale_image(input_path: str, output_path: str):
     
     cv2.imwrite(output_path, sharp)
 
-@client.on(events.NewMessage(pattern='/start'))
-async def start_handler(event):
-    await event.respond(
+@bot.on_message(filters.command("start"))
+def start_handler(client: Client, message: Message):
+    message.reply_text(
         "سلام! ⚡\n"
         "عکس خود را بفرستید تا کیفیت و رزولوشن آن را به صورت هوشمند افزایش دهم."
     )
 
-@client.on(events.NewMessage(func=lambda e: e.photo or e.document))
-async def photo_handler(event):
-    sender = await event.get_sender()
-    user_id = sender.id if sender else 'user'
-    
+@bot.on_message(filters.photo | filters.document)
+def photo_handler(client: Client, message: Message):
+    user_id = message.from_user.id
     input_file = f"downloads_{user_id}.jpg"
     output_file = f"output_{user_id}.jpg"
     
-    status_msg = await event.respond("⏳ در حال دریافت و پردازش تصویر...")
+    status_msg = message.reply_text("⏳ در حال دریافت و پردازش تصویر...")
     
     try:
-        # دانلود فایل از تلگرام
-        await event.client.download_media(event.message, file=input_file)
-        await status_msg.edit("⚙️ در حال اعمال الگوریتم‌های افزایش کیفیت...")
+        client.download_media(message, file_name=input_file)
+        status_msg.edit_text("⚙️ در حال اعمال الگوریتم‌های افزایش کیفیت...")
         
-        # پردازش تصویر
         upscale_image(input_file, output_file)
         
-        await status_msg.edit("📤 در حال ارسال تصویر نهایی...")
-        
-        # ارسال تصویر باکیفیت
-        await event.respond(
-            file=output_file,
-            message="✨ تصویر شما با موفقیت افزایش کیفیت پیدا کرد."
+        status_msg.edit_text("📤 در حال ارسال تصویر نهایی...")
+        message.reply_photo(
+            photo=output_file,
+            caption="✨ تصویر شما با موفقیت افزایش کیفیت پیدا کرد."
         )
-        await status_msg.delete()
+        status_msg.delete()
         
     except Exception as e:
-        await status_msg.edit(f"❌ خطایی در پردازش رخ داد: {str(e)}")
+        status_msg.edit_text(f"❌ خطایی در پردازش رخ داد: {str(e)}")
         
     finally:
         # پاکسازی آنی و ایمن فایل‌های موقت از سرور
@@ -89,10 +83,15 @@ async def photo_handler(event):
         if os.path.exists(output_file):
             os.remove(output_file)
 
+def run_bot():
+    print("ربات تلگرام روشن شد...")
+    bot.run()
+
 if __name__ == "__main__":
-    # اجرای وب‌سرویس در یک ترد جداگانه
-    web_thread = threading.Thread(target=run_web, daemon=True)
-    web_thread.start()
+    # اجرای ربات در پس‌زمینه
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
     
-    print("ربات و وب‌سرویس روشن شدند...")
-    client.run_until_disconnected()
+    # اجرای وب‌سرویس روی ترد اصلی برای پایداری در رندر
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
