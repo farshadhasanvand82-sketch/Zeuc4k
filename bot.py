@@ -1,6 +1,7 @@
 import os
 import cv2
 import threading
+import asyncio
 from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -85,14 +86,21 @@ def photo_handler(client: Client, message: Message):
     finally:
         # پاکسازی آنی و ایمن فایل‌های موقت از سرور
         if os.path.exists(input_file):
-            os.path.exists(input_file) and os.remove(input_file)
+            os.remove(input_file)
         if os.path.exists(output_file):
-            os.path.exists(output_file) and os.remove(output_file)
+            os.remove(output_file)
 
 if __name__ == "__main__":
     # اجرای وب‌سرویس در یک ترد جداگانه برای پاسخ به درخواست‌های Render
-    t = threading.Thread(target=run_web)
+    t = threading.Thread(target=run_web, daemon=True)
     t.start()
+    
+    # ایجاد و تنظیم Event Loop برای رفع خطای پایتون جدید
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
     
     print("ربات و وب‌سرویس روشن شدند...")
     app.run()
