@@ -1,0 +1,6 @@
+pyrogram==2.0.106
+tgcrypto
+Pillow
+requests
+opencv-python-headless
+numpy
