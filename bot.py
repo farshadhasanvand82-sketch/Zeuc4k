@@ -1,3 +1,12 @@
+import asyncio
+
+# ایجاد و ست کردن Event Loop در اولین خط فایل (قبل از ایمپورت کردن pyrogram)
+try:
+    loop = asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
 import os
 import cv2
 import threading
