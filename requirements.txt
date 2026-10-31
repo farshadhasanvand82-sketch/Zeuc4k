@@ -4,3 +4,4 @@ Pillow
 requests
 opencv-python-headless
 numpy
+flask
