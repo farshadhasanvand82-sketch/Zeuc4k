@@ -1,10 +1,11 @@
 import os
 import cv2
+import numpy as np
 import threading
 from flask import Flask
 from telethon import TelegramClient, events
 
-# استفاده از API_ID و API_HASH رسمی و عمومی اپلیکیشن تلگرام
+# اطلاعات تلگرام و توکن ربات
 API_ID = 2040
 API_HASH = "b18441a1ff607e10a989891a5462e627"
 BOT_TOKEN = "9232669247:AAGhQMuFITXbT-w-G-4qsAB9njUPFNO9y-E"
@@ -26,7 +27,7 @@ def run_web():
 client = TelegramClient('bot_session', API_ID, API_HASH)
 
 def upscale_image(input_path: str, output_path: str):
-    """افزایش کیفیت و وضوح تصویر با الگوریتم‌های OpenCV"""
+    """افزایش کیفیت و وضوح تصویر با الگوریتم‌های OpenCV بدون خطای عمق رنگ"""
     img = cv2.imread(input_path)
     if img is None:
         raise ValueError("تصویر خوانده نشد.")
@@ -35,11 +36,12 @@ def upscale_image(input_path: str, output_path: str):
     new_width = width * 2
     new_height = height * 2
     
+    # بزرگ‌نمایی با حفظ لبه‌ها
     upscaled = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
     
-    gray = cv2.cvtColor(upscaled, cv2.COLOR_BGR2GRAY)
-    laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-    sharp = cv2.convertScaleAbs(upscaled - 0.3 * cv2.cvtColor(laplacian, cv2.COLOR_GRAY2BGR))
+    # اعمال فیلتر شارپ ایمن و استاندارد
+    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+    sharp = cv2.filter2D(upscaled, -1, kernel)
     
     cv2.imwrite(output_path, sharp)
 
