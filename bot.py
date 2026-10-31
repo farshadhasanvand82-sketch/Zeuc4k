@@ -4,9 +4,9 @@ import threading
 from flask import Flask
 from telethon import TelegramClient, events
 
-# اطلاعات تلگرام و توکن ربات
-API_ID = 611335
-API_HASH = "d524b414d21f4d37f08684c1df41ac9d"
+# استفاده از API_ID و API_HASH رسمی و عمومی اپلیکیشن تلگرام
+API_ID = 2040
+API_HASH = "b18441a1ff607e10a989891a5462e627"
 BOT_TOKEN = "9232669247:AAGhQMuFITXbT-w-G-4qsAB9njUPFNO9y-E"
 
 # پورت وب‌سرویس برای رندر
