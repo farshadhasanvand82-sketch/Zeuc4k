@@ -3,7 +3,7 @@ import cv2
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
-# اطلاعات اتصال ربات (از متغیرهای محیطی رندر خوانده می‌شود)
+# دریافت اطلاعات از متغیرهای محیطی رندر
 API_ID = int(os.environ.get("API_ID", 0))
 API_HASH = os.environ.get("API_HASH", "")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
@@ -16,21 +16,19 @@ app = Client(
 )
 
 def upscale_image(input_path: str, output_path: str):
-    """
-    افزایش کیفیت و رزولوشن تصویر با استفاده از الگوریتم‌های OpenCV
-    """
+    """افزایش کیفیت و وضوح تصویر با الگوریتم‌های بهینه OpenCV"""
     img = cv2.imread(input_path)
     if img is None:
         raise ValueError("تصویر خوانده نشد.")
     
-    # افزایش ابعاد تصویر با حفظ وضوح لبه‌ها
     height, width = img.shape[:2]
     new_width = width * 2
     new_height = height * 2
     
+    # بزرگ‌نمایی با حفظ لبه‌ها
     upscaled = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
     
-    # بهبود شارپنس و وضوح نهایی تصویر
+    # شارپ کردن تصویر برای وضوح بیشتر
     gray = cv2.cvtColor(upscaled, cv2.COLOR_BGR2GRAY)
     laplacian = cv2.Laplacian(gray, cv2.CV_64F)
     sharp = cv2.convertScaleAbs(upscaled - 0.3 * cv2.cvtColor(laplacian, cv2.COLOR_GRAY2BGR))
@@ -46,7 +44,6 @@ def start_handler(client: Client, message: Message):
 
 @app.on_message(filters.photo | filters.document)
 def photo_handler(client: Client, message: Message):
-    # استفاده از شناسه یکتا برای جلوگیری از تداخل فایل‌های کاربران مختلف
     user_id = message.from_user.id
     input_file = f"downloads_{user_id}.jpg"
     output_file = f"output_{user_id}.jpg"
@@ -54,16 +51,12 @@ def photo_handler(client: Client, message: Message):
     status_msg = message.reply_text("⏳ در حال دریافت و پردازش تصویر...")
     
     try:
-        # دانلود تصویر از تلگرام
         client.download_media(message, file_name=input_file)
         status_msg.edit_text("⚙️ در حال اعمال الگوریتم‌های افزایش کیفیت...")
         
-        # پردازش و افزایش کیفیت تصویر
         upscale_image(input_file, output_file)
         
         status_msg.edit_text("📤 در حال ارسال تصویر نهایی...")
-        
-        # ارسال تصویر باکیفیت به کاربر
         message.reply_photo(
             photo=output_file,
             caption="✨ تصویر شما با موفقیت افزایش کیفیت پیدا کرد."
@@ -74,7 +67,7 @@ def photo_handler(client: Client, message: Message):
         status_msg.edit_text(f"❌ خطایی در پردازش رخ داد: {str(e)}")
         
     finally:
-        # پاکسازی آنی و ایمن فایل‌های موقت از سرور برای جلوگیری از پر شدن حافظه
+        # پاکسازی آنی و ایمن فایل‌های موقت از سرور
         if os.path.exists(input_file):
             os.remove(input_file)
         if os.path.exists(output_file):
