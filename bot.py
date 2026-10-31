@@ -1,13 +1,29 @@
 import os
 import cv2
+import threading
+from flask import Flask
 from pyrogram import Client, filters
 from pyrogram.types import Message
 
-# دریافت اطلاعات از متغیرهای محیطی رندر
-API_ID = int(os.environ.get("API_ID", 0))
-API_HASH = os.environ.get("API_HASH", "")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+# استفاده از مقادیر عمومی و رسمی Pyrogram برای تلگرام
+API_ID = 611335
+API_HASH = "d524b414d21f4d37f08684c1df41ac9d"
+BOT_TOKEN = "9232669247:AAGhQMuFITXbT-w-G-4qsAB9njUPFNO9y-E"
 
+# پورت وب‌سرویس برای رندر
+PORT = int(os.environ.get("PORT", 10000))
+
+# راه‌اندازی سرور وب برای پایش رندر (Web Service)
+web_app = Flask(__name__)
+
+@web_app.route('/')
+def home():
+    return "Robot is up and running!"
+
+def run_web():
+    web_app.run(host="0.0.0.0", port=PORT)
+
+# راه‌اندازی کلاینت تلگرام
 app = Client(
     "image_upscaler_bot",
     api_id=API_ID,
@@ -16,7 +32,7 @@ app = Client(
 )
 
 def upscale_image(input_path: str, output_path: str):
-    """افزایش کیفیت و وضوح تصویر با الگوریتم‌های بهینه OpenCV"""
+    """افزایش کیفیت و وضوح تصویر با الگوریتم‌های OpenCV"""
     img = cv2.imread(input_path)
     if img is None:
         raise ValueError("تصویر خوانده نشد.")
@@ -69,10 +85,14 @@ def photo_handler(client: Client, message: Message):
     finally:
         # پاکسازی آنی و ایمن فایل‌های موقت از سرور
         if os.path.exists(input_file):
-            os.remove(input_file)
+            os.path.exists(input_file) and os.remove(input_file)
         if os.path.exists(output_file):
-            os.remove(output_file)
+            os.path.exists(output_file) and os.remove(output_file)
 
 if __name__ == "__main__":
-    print("ربات روشن شد...")
+    # اجرای وب‌سرویس در یک ترد جداگانه برای پاسخ به درخواست‌های Render
+    t = threading.Thread(target=run_web)
+    t.start()
+    
+    print("ربات و وب‌سرویس روشن شدند...")
     app.run()
