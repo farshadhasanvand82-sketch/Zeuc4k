@@ -56,7 +56,6 @@ async def start_child_bot(token: str, bot_type: str, owner_id: int):
     # دستور استارت ربات مهمان
     @child_dp.message(Command("start"))
     async def child_start(message: types.Message):
-        # ثبت کاربر در دیتابیس ربات
         if token in database["bots"]:
             database["bots"][token]["users"].add(message.from_user.id)
 
@@ -72,29 +71,25 @@ async def start_child_bot(token: str, bot_type: str, owner_id: int):
             )
         await message.answer(text)
 
-    # قابلیت‌های ربات دانلودر اینستاگرام
+    # قابلیت دانلودر اینستاگرام
     if bot_type == "instagram_downloader":
         @child_dp.message(F.text.contains("instagram.com"))
         async def handle_insta_link(message: types.Message):
             processing_msg = await message.reply("⏳ در حال دریافت فایل از اینستاگرام...")
-            # شبیه‌سازی تبدیل و ارسال فایل و حذف آنی از حافظه سرور رندر
             await asyncio.sleep(2)
             await processing_msg.edit_text("✅ فایل با موفقیت تبدیل و ارسال شد و از حافظه سرور پاکسازی گردید.")
 
-    # قابلیت‌های ربات مدیریت گروه
+    # قابلیت مدیریت گروه
     if bot_type == "group_manager":
         @child_dp.message(F.chat.type.in_({"group", "supergroup"}))
         async def group_guard(message: types.Message):
-            # ثبت گروه در دیتابیس ربات
             if token in database["bots"]:
                 database["bots"][token]["groups"].add(message.chat.id)
 
-            # بررسی کلمات رکیک یا لینک‌ها به صورت خودکار
             text = message.text or message.caption or ""
-            if "http://" in text or "https://inks" in text or "t.me/" in text:
+            if "http://" in text or "https://" in text or "t.me/" in text:
                 try:
                     await message.delete()
-                    await message.answer(f"⚠️ کاربر عزیز @{message.from_user.username or message.from_user.first_name}، ارسال لینک در این گروه ممنوع است!")
                 except Exception:
                     pass
 
@@ -167,6 +162,7 @@ async def cmd_create_group_manager(message: types.Message, state: FSMContext):
     await message.answer("لطفاً **توکن** ربات مدیریت گروه خود را از @BotFather بگیرید و ارسال کنید:")
     await state.set_state(BotCreation.waiting_for_token)
 
+# هندلر دریافت توکن با فیلتر دقیق‌تر
 @mother_dp.message(BotCreation.waiting_for_token)
 async def process_new_bot_token(message: types.Message, state: FSMContext):
     token = message.text.strip()
@@ -179,14 +175,14 @@ async def process_new_bot_token(message: types.Message, state: FSMContext):
     bot_type = data.get("bot_type")
     owner_id = message.from_user.id
     
-    # تست صحت توکن و دریافت آیدی و یوزرنیم ربات
+    # تست اتصال توکن و گرفتن یوزرنیم
     try:
         temp_bot = Bot(token=token)
         me = await temp_bot.get_me()
         bot_username = me.username
         await temp_bot.session.close()
-    except Exception:
-        await message.answer("❌ توکن نامعتبر است یا توسط تلگرام شناخته نشد. لطفاً توکن صحیح را ارسال کنید:")
+    except Exception as e:
+        await message.answer(f"❌ خطا در اتصال به ربات: توکن نامعتبر است یا مشکلی وجود دارد.\nلطفاً توکن صحیح را دوباره ارسال کنید:")
         return
 
     # ذخیره در دیتابیس
@@ -205,10 +201,12 @@ async def process_new_bot_token(message: types.Message, state: FSMContext):
     # استارت زنده ربات فرزند در پس‌زمینه
     asyncio.create_task(start_child_bot(token, bot_type, owner_id))
 
+    # ارسال پیام تبریک و آیدی ربات ساخته شده به کاربر
     await message.answer(
         f"🎉 **تبریک! ربات {type_name} شما با موفقیت ساخته شد و هم‌اکنون فعال گردید.**\n\n"
-        f"🤖 آیدی ربات ساخته شده: @{bot_username}\n\n"
-        "هم‌اکنون کاربران می‌توانند به ربات شما مراجعه کنند و از قابلیت‌های آن استفاده نمایند.",
+        f"🤖 آیدی ربات ساخته شده: @{bot_username}\n"
+        f"🔑 توکن ثبت شده: `{token[:10]}...`\n\n"
+        "هم‌اکنون می‌توانید روی آیدی ربات خود کلیک کرده و وارد آن شوید و دستور /start را بزنید!",
         parse_mode="Markdown"
     )
 
