@@ -1,5 +1,8 @@
 import asyncio
 import logging
+import os
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from threading import Thread
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -9,26 +12,36 @@ from aiogram.fsm.storage.memory import MemoryStorage
 # تنظیمات لاگ‌گیری
 logging.basicConfig(level=logging.INFO)
 
-# توکن ربات مادر زئوس (شما)
+# توکن ربات مادر زئوس
 MOTHER_BOT_TOKEN = "9284844625:AAFygL4sZJlLDvdgA1r1mJBv-rWehvcWX2c"
 
 bot = Bot(token=MOTHER_BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# دیتابیس ساختاریافته در حافظه (سبک و بدون فایل‌های حجیم)
+# دیتابیس ساختاریافته در حافظه
 database = {
     "bots": {}
 }
 
-# مراحل دریافت توکن در FSM
 class BotCreation(StatesGroup):
     waiting_for_token = State()
 
-# ----------------- ربات مادر (زئوس) -----------------
+# --- بخش وب‌سرور برای جلوگیری از خطای پورت در رندر رایگان ---
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"ZEUC Bot is running successfully!")
+
+def run_web_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), SimpleHandler)
+    server.serve_forever()
+# ---------------------------------------------------------
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    # کیبورد اصلی ربات مادر با دکمه‌های شستی درخواست شده
     keyboard = types.ReplyKeyboardMarkup(
         keyboard=[
             [types.KeyboardButton(text="📥 دانلودر اینستاگرام"), types.KeyboardButton(text="🛡 مدیریت گروه")],
@@ -43,7 +56,6 @@ async def cmd_start(message: types.Message):
     )
     await message.answer(welcome_text, reply_markup=keyboard, parse_mode="Markdown")
 
-# دکمه سازنده
 @dp.message(F.text == "🛠 سازنده")
 async def cmd_builder_info(message: types.Message):
     bot_info = await bot.get_me()
@@ -53,7 +65,6 @@ async def cmd_builder_info(message: types.Message):
     )
     await message.answer(text, parse_mode="Markdown")
 
-# 1. ساخت ربات دانلودر اینستاگرام
 @dp.message(F.text == "📥 دانلودر اینستاگرام")
 async def cmd_create_downloader(message: types.Message, state: FSMContext):
     await state.update_data(bot_type="instagram_downloader")
@@ -62,7 +73,6 @@ async def cmd_create_downloader(message: types.Message, state: FSMContext):
     )
     await state.set_state(BotCreation.waiting_for_token)
 
-# 2. ساخت ربات مدیریت گروه
 @dp.message(F.text == "🛡 مدیریت گروه")
 async def cmd_create_group_manager(message: types.Message, state: FSMContext):
     await state.update_data(bot_type="group_manager")
@@ -72,7 +82,6 @@ async def cmd_create_group_manager(message: types.Message, state: FSMContext):
     )
     await state.set_state(BotCreation.waiting_for_token)
 
-# پردازش دریافت توکن و ساخت ربات
 @dp.message(BotCreation.waiting_for_token)
 async def process_new_bot_token(message: types.Message, state: FSMContext):
     token = message.text.strip()
@@ -85,7 +94,6 @@ async def process_new_bot_token(message: types.Message, state: FSMContext):
     bot_type = data.get("bot_type")
     owner_id = message.from_user.id
     
-    # ذخیره در دیتابیس (بدون نگهداری فایل‌های حجیم، صرفاً اطلاعات ساختاری)
     database["bots"][token] = {
         "owner_id": owner_id,
         "type": bot_type,
@@ -101,7 +109,6 @@ async def process_new_bot_token(message: types.Message, state: FSMContext):
     }
 
     await state.clear()
-    
     type_name = "دانلودر اینستاگرام" if bot_type == "instagram_downloader" else "مدیریت گروه"
     
     await message.answer(
@@ -110,7 +117,6 @@ async def process_new_bot_token(message: types.Message, state: FSMContext):
         parse_mode="Markdown"
     )
 
-# دکمه تنظیمات ربات (برای مالکان ربات‌ها)
 @dp.message(F.text == "⚙️ تنظیمات ربات")
 async def bot_settings_menu(message: types.Message):
     user_id = message.from_user.id
@@ -120,7 +126,6 @@ async def bot_settings_menu(message: types.Message):
         await message.answer("شما هنوز رباتی نساخته‌اید! از دکمه‌های ربات‌ساز اقدام به ساخت ربات کنید.")
         return
 
-    # پنل مدیریت شیشه‌ای
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[
             [types.InlineKeyboardButton(text="👥 مشاهده کاربران", callback_data="show_users")],
@@ -131,7 +136,6 @@ async def bot_settings_menu(message: types.Message):
     )
     await message.answer("⚙️ **پنل مدیریت ربات‌های شما:**\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard, parse_mode="Markdown")
 
-# مدیریت کال‌بک‌های پنل تنظیمات ربات
 @dp.callback_query(F.data.in_(["show_users", "show_groups", "set_channel", "toggle_status"]))
 async def handle_settings_callbacks(callback: types.CallbackQuery):
     user_id = callback.from_user.id
@@ -169,17 +173,14 @@ async def handle_settings_callbacks(callback: types.CallbackQuery):
         await callback.answer(f"وضعیت ربات تغییر کرد به: {status_text}", show_alert=True)
         await callback.message.edit_text(f"⚙️ **پنل مدیریت ربات:**\nوضعیت فعلی: **{status_text}**", parse_mode="Markdown")
 
-# دستور /bot داخل گروه (با ریپلای روی ربات) برای تنظیمات گروه توسط مدیران گروه
 @dp.message(F.text.startswith("/bot"))
 async def group_bot_settings_command(message: types.Message):
     if message.chat.type not in ["group", "supergroup"]:
         return
         
-    # بررسی اینکه آیا روی پیام ربات ریپلای شده است یا خیر
     if not message.reply_to_message or message.reply_to_message.from_user.id != (await bot.get_me()).id:
         return
 
-    # کیبورد تنظیمات درون‌گروهی
     keyboard = types.InlineKeyboardMarkup(
         inline_keyboard=[
             [types.InlineKeyboardButton(text="🗑 حذف لینک: فعال/غیرفعال", callback_data="grp_toggle_link")],
@@ -195,6 +196,11 @@ async def group_bot_settings_command(message: types.Message):
     )
 
 async def main():
+    # اجرای وب‌سرور در ترد (Thread) جداگانه برای گول زدن رندر و جلوگیری از ارور پورت
+    server_thread = Thread(target=run_web_server, daemon=True)
+    server_thread.start()
+    
+    # اجرای ربات تلگرام
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
