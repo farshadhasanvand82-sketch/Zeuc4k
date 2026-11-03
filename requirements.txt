@@ -1,6 +1,2 @@
-telethon
-Pillow
-opencv-python-headless
-numpy
-flask
-requests
+aiogram>=3.0.0
+aiohttp>=3.8.0
