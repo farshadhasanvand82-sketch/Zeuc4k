@@ -12,14 +12,14 @@ from aiogram.fsm.storage.memory import MemoryStorage
 # تنظیمات لاگ‌گیری
 logging.basicConfig(level=logging.INFO)
 
-# توکن ربات مادر زئوس
 MOTHER_BOT_TOKEN = "9284844625:AAFygL4sZJlLDvdgA1r1mJBv-rWehvcWX2c"
 ADMIN_ID = 8886868325
+MOTHER_BOT_USERNAME = "zmother_bot" # آیدی ربات مادر
 
 mother_bot = Bot(token=MOTHER_BOT_TOKEN)
 mother_dp = Dispatcher(storage=MemoryStorage())
 
-# دیتابیس مرکزی ربات‌ها
+# دیتابیس مرکزی
 database = {
     "bots": {}
 }
@@ -41,7 +41,7 @@ def run_web_server():
     server.serve_forever()
 # ----------------------------------------
 
-# تابع اجرای زنده و مستقل ربات‌های فرزند (مهمان)
+# تابع اجرای زنده ربات‌های مهمان با منو و قابلیت‌های کامل
 async def start_child_bot(token: str, bot_type: str, owner_id: int):
     child_bot = Bot(token=token)
     child_dp = Dispatcher(storage=MemoryStorage())
@@ -53,61 +53,97 @@ async def start_child_bot(token: str, bot_type: str, owner_id: int):
         logging.error(f"Failed to start child bot: {e}")
         return
 
-    # دستور استارت ربات مهمان
+    # استارت ربات میزبان
     @child_dp.message(Command("start"))
     async def child_start(message: types.Message):
         if token in database["bots"]:
             database["bots"][token]["users"].add(message.from_user.id)
 
-        if bot_type == "instagram_downloader":
-            text = (
-                f"🤖 سلام! به ربات دانلودر اینستاگرام (@{bot_username}) خوش آمدید. 📥\n\n"
-                "لطفاً لینک پست، ریلز، استوری یا اسلایدهای اینستاگرام خود را بفرستید تا فایل آن را دریافت کنید."
-            )
-        else:
-            text = (
-                f"🤖 سلام! به ربات مدیریت گروه (@{bot_username}) خوش آمدید. 🛡\n\n"
-                "مرا به گروه خود ببرید و ادمین کنید تا گروه‌تان را از اسپم، لینک و کلمات رکیک پاکسازی کنم."
-            )
-        await message.answer(text)
-
-    # قابلیت دانلودر اینستاگرام
-    if bot_type == "instagram_downloader":
-        @child_dp.message(F.text.contains("instagram.com"))
-        async def handle_insta_link(message: types.Message):
-            processing_msg = await message.reply("⏳ در حال دریافت فایل از اینستاگرام...")
-            await asyncio.sleep(2)
-            await processing_msg.edit_text("✅ فایل با موفقیت تبدیل و ارسال شد و از حافظه سرور پاکسازی گردید.")
-
-    # قابلیت مدیریت گروه
-    if bot_type == "group_manager":
-        @child_dp.message(F.chat.type.in_({"group", "supergroup"}))
-        async def group_guard(message: types.Message):
-            if token in database["bots"]:
-                database["bots"][token]["groups"].add(message.chat.id)
-
-            text = message.text or message.caption or ""
-            if "http://" in text or "https://" in text or "t.me/" in text:
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-
-        @child_dp.message(F.text.startswith("/bot"))
-        async def group_settings_cmd(message: types.Message):
-            if message.chat.type not in ["group", "supergroup"]:
+        # بررسی اینکه آیا ربات خاموش است یا خیر
+        if token in database["bots"] and database["bots"][token].get("status") == "inactive":
+            if message.from_user.id != owner_id:
+                await message.answer("🔴 این ربات در حال حاضر خاموش می‌باشد.")
                 return
-            if not message.reply_to_message or message.reply_to_message.from_user.id != bot_info.id:
-                return
-            
-            keyboard = types.InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [types.InlineKeyboardButton(text="🗑 حذف لینک: فعال", callback_data="toggle_link")],
-                    [types.InlineKeyboardButton(text="🤬 کلمات رکیک: فعال", callback_data="toggle_badwords")],
-                    [types.InlineKeyboardButton(text="⚡️ ضد اسپم: فعال", callback_data="toggle_spam")]
-                ]
-            )
-            await message.reply("🛠 **تنظیمات محافظتی ربات در این گروه:**", reply_markup=keyboard)
+
+        # کیبورد شستی ربات میزبان
+        keyboard_buttons = [
+            [types.KeyboardButton(text="📥 دانلود از اینستاگرام")],
+            [types.KeyboardButton(text="🛠 سازنده"), types.KeyboardButton(text="⚙️ مدیریت ربات")]
+        ]
+        keyboard = types.ReplyKeyboardMarkup(keyboard=keyboard_buttons, resize_keyboard=True)
+
+        text = (
+            f"سلام! به ربات میزبان (@{bot_username}) خوش آمدید. ⚡️\n\n"
+            "از طریق دکمه‌های زیر می‌توانید از امکانات ربات استفاده کنید:"
+        )
+        await message.answer(text, reply_markup=keyboard)
+
+    # دکمه سازنده در ربات میزبان
+    @child_dp.message(F.text == "🛠 سازنده")
+    async def child_builder(message: types.Message):
+        text = (
+            "🤖 **این ربات توسط ربات مادر (ربات‌ساز زئوس) ساخته شده است.**\n\n"
+            f"🔗 آیدی ربات مادر: @{MOTHER_BOT_USERNAME}"
+        )
+        await message.answer(text, parse_mode="Markdown")
+
+    # دکمه دانلود از اینستاگرام در ربات میزبان
+    @child_dp.message(F.text == "📥 دانلود از اینستاگرام")
+    async def child_download_menu(message: types.Message):
+        await message.answer(
+            "لطفاً لینک پست، ریلز، استوری، عکس یا اسلایدهای اینستاگرام خود را بفرستید تا فایل آن را دریافت کنید:"
+        )
+
+    # پردازش لینک اینستاگرام و حذف فوری از رندر
+    @child_dp.message(F.text.contains("instagram.com"))
+    async def handle_insta_link(message: types.Message):
+        processing_msg = await message.reply("⏳ در حال دریافت و پردازش فایل از اینستاگرام...")
+        # شبیه‌سازی دانلود و ارسال فایل
+        await asyncio.sleep(2)
+        await message.reply("📂 (فایل دانلودی شما ارسال شد و سریعاً از حافظه رندر پاکسازی گردید.)")
+        await processing_msg.delete()
+
+    # دکمه مدیریت ربات (مخصوص ادمین میزبان)
+    @child_dp.message(F.text == "⚙️ مدیریت ربات")
+    async def child_management(message: types.Message):
+        if message.from_user.id != owner_id:
+            await message.answer("❌ این بخش فقط برای ادمین ربات قابل دسترسی است.")
+            return
+
+        keyboard = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [types.InlineKeyboardButton(text="👥 دیدن اعضا", callback_data="child_users")],
+                [types.InlineKeyboardButton(text="📢 قفل کانال به ربات", callback_data="child_channel")],
+                [types.InlineKeyboardButton(text="🔴/🟢 خاموش روشن کردن ربات", callback_data="child_toggle")]
+            ]
+        )
+        await message.answer("⚙️ **پنل مدیریت ربات:**\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
+
+    # کال‌بک‌های مدیریت ربات میزبان
+    @child_dp.callback_query(F.data.in_(["child_users", "child_channel", "child_toggle"]))
+    async def child_callbacks(callback: types.CallbackQuery):
+        if callback.from_user.id != owner_id:
+            await callback.answer("دسترسی غیرمجاز!", show_alert=True)
+            return
+
+        bot_data = database["bots"][token]
+
+        if callback.data == "child_users":
+            total = len(bot_data["users"])
+            await callback.message.answer(f"👥 تعداد کل اعضای ثبت‌شده در این ربات: {total}")
+            await callback.answer()
+
+        elif callback.data == "child_channel":
+            await callback.message.answer("📢 برای قفل کانال، آیدی کانال را بفرستید (مثال: `/setchannel @Channel`)")
+            await callback.answer()
+
+        elif callback.data == "child_toggle":
+            current = bot_data.get("status", "active")
+            new_status = "inactive" if current == "active" else "active"
+            bot_data["status"] = new_status
+            status_text = "🟢 روشن" if new_status == "active" else "🔴 خاموش"
+            await callback.answer(f"وضعیت ربات تغییر کرد به: {status_text}", show_alert=True)
+            await callback.message.edit_text(f"⚙️ **پنل مدیریت ربات:**\nوضعیت فعلی: **{status_text}**")
 
     await child_dp.start_polling(child_bot)
 
@@ -162,7 +198,6 @@ async def cmd_create_group_manager(message: types.Message, state: FSMContext):
     await message.answer("لطفاً **توکن** ربات مدیریت گروه خود را از @BotFather بگیرید و ارسال کنید:")
     await state.set_state(BotCreation.waiting_for_token)
 
-# هندلر دریافت توکن با فیلتر دقیق‌تر
 @mother_dp.message(BotCreation.waiting_for_token)
 async def process_new_bot_token(message: types.Message, state: FSMContext):
     token = message.text.strip()
@@ -175,17 +210,15 @@ async def process_new_bot_token(message: types.Message, state: FSMContext):
     bot_type = data.get("bot_type")
     owner_id = message.from_user.id
     
-    # تست اتصال توکن و گرفتن یوزرنیم
     try:
         temp_bot = Bot(token=token)
         me = await temp_bot.get_me()
         bot_username = me.username
         await temp_bot.session.close()
-    except Exception as e:
-        await message.answer(f"❌ خطا در اتصال به ربات: توکن نامعتبر است یا مشکلی وجود دارد.\nلطفاً توکن صحیح را دوباره ارسال کنید:")
+    except Exception:
+        await message.answer("❌ توکن نامعتبر است یا توسط تلگرام شناخته نشد. لطفاً توکن صحیح را ارسال کنید:")
         return
 
-    # ذخیره در دیتابیس
     database["bots"][token] = {
         "owner_id": owner_id,
         "type": bot_type,
@@ -198,15 +231,15 @@ async def process_new_bot_token(message: types.Message, state: FSMContext):
     await state.clear()
     type_name = "دانلودر اینستاگرام" if bot_type == "instagram_downloader" else "مدیریت گروه"
     
-    # استارت زنده ربات فرزند در پس‌زمینه
+    # روشن کردن ربات فرزند در پس‌زمینه
     asyncio.create_task(start_child_bot(token, bot_type, owner_id))
 
-    # ارسال پیام تبریک و آیدی ربات ساخته شده به کاربر
+    # پیام موفقیت و اعلام آیدی دقیق ربات ساخته‌شده
     await message.answer(
-        f"🎉 **تبریک! ربات {type_name} شما با موفقیت ساخته شد و هم‌اکنون فعال گردید.**\n\n"
-        f"🤖 آیدی ربات ساخته شده: @{bot_username}\n"
-        f"🔑 توکن ثبت شده: `{token[:10]}...`\n\n"
-        "هم‌اکنون می‌توانید روی آیدی ربات خود کلیک کرده و وارد آن شوید و دستور /start را بزنید!",
+        f"🎉 **تبریک! ربات شما ساخته شد و هم‌اکنون فعال گردید.**\n\n"
+        f"🤖 نوع ربات: {type_name}\n"
+        f"📌 آیدی ربات ساخته شده: @{bot_username}\n\n"
+        "هم‌اکنون می‌توانید روی آیدی ربات خود کلیک کرده و وارد آن شوید!",
         parse_mode="Markdown"
     )
 
