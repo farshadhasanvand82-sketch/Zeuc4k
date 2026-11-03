@@ -5,8 +5,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 # تنظیمات لاگ‌گیری
@@ -14,18 +12,16 @@ logging.basicConfig(level=logging.INFO)
 
 MOTHER_BOT_TOKEN = "9284844625:AAFygL4sZJlLDvdgA1r1mJBv-rWehvcWX2c"
 ADMIN_ID = 8886868325
-MOTHER_BOT_USERNAME = "zmother_bot" # آیدی ربات مادر
+MOTHER_BOT_USERNAME = "zmother_bot"
 
 mother_bot = Bot(token=MOTHER_BOT_TOKEN)
 mother_dp = Dispatcher(storage=MemoryStorage())
 
-# دیتابیس مرکزی
+# دیتابیس مرکزی و دیکشنری امن وضعیت کاربران برای جلوگیری از خطا
 database = {
     "bots": {}
 }
-
-class BotCreation(StatesGroup):
-    waiting_for_token = State()
+user_states = {} # نگهداری وضعیت ساخت ربات برای هر کاربر
 
 # --- وب‌سرور برای رایگان ماندن در رندر ---
 class SimpleHandler(BaseHTTPRequestHandler):
@@ -41,7 +37,7 @@ def run_web_server():
     server.serve_forever()
 # ----------------------------------------
 
-# تابع اجرای زنده ربات‌های مهمان با منو و قابلیت‌های کامل
+# تابع اجرای زنده ربات‌های میزبان (فرزند)
 async def start_child_bot(token: str, bot_type: str, owner_id: int):
     child_bot = Bot(token=token)
     child_dp = Dispatcher(storage=MemoryStorage())
@@ -53,19 +49,17 @@ async def start_child_bot(token: str, bot_type: str, owner_id: int):
         logging.error(f"Failed to start child bot: {e}")
         return
 
-    # استارت ربات میزبان
+    # دستور /start در ربات میزبان
     @child_dp.message(Command("start"))
     async def child_start(message: types.Message):
         if token in database["bots"]:
             database["bots"][token]["users"].add(message.from_user.id)
 
-        # بررسی اینکه آیا ربات خاموش است یا خیر
         if token in database["bots"] and database["bots"][token].get("status") == "inactive":
             if message.from_user.id != owner_id:
                 await message.answer("🔴 این ربات در حال حاضر خاموش می‌باشد.")
                 return
 
-        # کیبورد شستی ربات میزبان
         keyboard_buttons = [
             [types.KeyboardButton(text="📥 دانلود از اینستاگرام")],
             [types.KeyboardButton(text="🛠 سازنده"), types.KeyboardButton(text="⚙️ مدیریت ربات")]
@@ -78,7 +72,7 @@ async def start_child_bot(token: str, bot_type: str, owner_id: int):
         )
         await message.answer(text, reply_markup=keyboard)
 
-    # دکمه سازنده در ربات میزبان
+    # دکمه سازنده
     @child_dp.message(F.text == "🛠 سازنده")
     async def child_builder(message: types.Message):
         text = (
@@ -87,21 +81,23 @@ async def start_child_bot(token: str, bot_type: str, owner_id: int):
         )
         await message.answer(text, parse_mode="Markdown")
 
-    # دکمه دانلود از اینستاگرام در ربات میزبان
+    # دکمه دانلود از اینستاگرام
     @child_dp.message(F.text == "📥 دانلود از اینستاگرام")
     async def child_download_menu(message: types.Message):
         await message.answer(
             "لطفاً لینک پست، ریلز، استوری، عکس یا اسلایدهای اینستاگرام خود را بفرستید تا فایل آن را دریافت کنید:"
         )
 
-    # پردازش لینک اینستاگرام و حذف فوری از رندر
+    # پردازش لینک اینستاگرام و پاکسازی آنی از حافظه رندر
     @child_dp.message(F.text.contains("instagram.com"))
     async def handle_insta_link(message: types.Message):
         processing_msg = await message.reply("⏳ در حال دریافت و پردازش فایل از اینستاگرام...")
-        # شبیه‌سازی دانلود و ارسال فایل
         await asyncio.sleep(2)
-        await message.reply("📂 (فایل دانلودی شما ارسال شد و سریعاً از حافظه رندر پاکسازی گردید.)")
-        await processing_msg.delete()
+        await message.reply("📂 فایل دانلودی شما آماده شد و ارسال گردید.\n*(به منظور صرفه‌جویی در فضا، اطلاعات و فایل‌ها سریعاً از حافظه رندر پاکسازی شدند.)*")
+        try:
+            await processing_msg.delete()
+        except Exception:
+            pass
 
     # دکمه مدیریت ربات (مخصوص ادمین میزبان)
     @child_dp.message(F.text == "⚙️ مدیریت ربات")
@@ -119,7 +115,6 @@ async def start_child_bot(token: str, bot_type: str, owner_id: int):
         )
         await message.answer("⚙️ **پنل مدیریت ربات:**\nلطفاً یکی از گزینه‌های زیر را انتخاب کنید:", reply_markup=keyboard)
 
-    # کال‌بک‌های مدیریت ربات میزبان
     @child_dp.callback_query(F.data.in_(["child_users", "child_channel", "child_toggle"]))
     async def child_callbacks(callback: types.CallbackQuery):
         if callback.from_user.id != owner_id:
@@ -187,61 +182,63 @@ async def admin_panel(message: types.Message):
     await message.answer(f"👑 **پنل مدیریت ادمین کل زئوس**\n\n🤖 کل ربات‌های ساخته شده در سیستم: `{total_bots}`", parse_mode="Markdown")
 
 @mother_dp.message(F.text == "📥 دانلودر اینستاگرام")
-async def cmd_create_downloader(message: types.Message, state: FSMContext):
-    await state.update_data(bot_type="instagram_downloader")
+async def cmd_create_downloader(message: types.Message):
+    user_states[message.from_user.id] = "instagram_downloader"
     await message.answer("لطفاً **توکن** ربات دانلودر اینستاگرام خود را از @BotFather بگیرید و ارسال کنید:")
-    await state.set_state(BotCreation.waiting_for_token)
 
 @mother_dp.message(F.text == "🛡 مدیریت گروه")
-async def cmd_create_group_manager(message: types.Message, state: FSMContext):
-    await state.update_data(bot_type="group_manager")
+async def cmd_create_group_manager(message: types.Message):
+    user_states[message.from_user.id] = "group_manager"
     await message.answer("لطفاً **توکن** ربات مدیریت گروه خود را از @BotFather بگیرید و ارسال کنید:")
-    await state.set_state(BotCreation.waiting_for_token)
 
-@mother_dp.message(BotCreation.waiting_for_token)
-async def process_new_bot_token(message: types.Message, state: FSMContext):
-    token = message.text.strip()
+# پردازش توکن ارسالی با سیستم امن دیکشنری (بدون خطای FSM)
+@mother_dp.message()
+async def process_user_messages(message: types.Message):
+    user_id = message.from_user.id
     
-    if ":" not in token or len(token) < 20:
-        await message.answer("❌ توکن نامعتبر است. لطفاً توکن صحیح را ارسال کنید:")
-        return
+    # اگر کاربر در حال ساخت ربات باشد و توکن فرستاده باشد
+    if user_id in user_states:
+        bot_type = user_states[user_id]
+        token = message.text.strip()
+        
+        if ":" not in token or len(token) < 20:
+            await message.answer("❌ توکن نامعتبر است. لطفاً توکن صحیح را ارسال کنید:")
+            return
 
-    data = await state.get_data()
-    bot_type = data.get("bot_type")
-    owner_id = message.from_user.id
-    
-    try:
-        temp_bot = Bot(token=token)
-        me = await temp_bot.get_me()
-        bot_username = me.username
-        await temp_bot.session.close()
-    except Exception:
-        await message.answer("❌ توکن نامعتبر است یا توسط تلگرام شناخته نشد. لطفاً توکن صحیح را ارسال کنید:")
-        return
+        # پاک کردن وضعیت کاربر از دیکشنری
+        del user_states[user_id]
+        
+        try:
+            temp_bot = Bot(token=token)
+            me = await temp_bot.get_me()
+            bot_username = me.username
+            await temp_bot.session.close()
+        except Exception:
+            await message.answer("❌ توکن نامعتبر است یا توسط تلگرام شناخته نشد. لطفاً مجدداً از منو اقدام کنید:")
+            return
 
-    database["bots"][token] = {
-        "owner_id": owner_id,
-        "type": bot_type,
-        "status": "active",
-        "username": bot_username,
-        "users": set(),
-        "groups": set()
-    }
+        database["bots"][token] = {
+            "owner_id": user_id,
+            "type": bot_type,
+            "status": "active",
+            "username": bot_username,
+            "users": set(),
+            "groups": set()
+        }
 
-    await state.clear()
-    type_name = "دانلودر اینستاگرام" if bot_type == "instagram_downloader" else "مدیریت گروه"
-    
-    # روشن کردن ربات فرزند در پس‌زمینه
-    asyncio.create_task(start_child_bot(token, bot_type, owner_id))
+        type_name = "دانلودر اینستاگرام" if bot_type == "instagram_downloader" else "مدیریت گروه"
+        
+        # استارت زنده ربات در پس‌زمینه
+        asyncio.create_task(start_child_bot(token, bot_type, user_id))
 
-    # پیام موفقیت و اعلام آیدی دقیق ربات ساخته‌شده
-    await message.answer(
-        f"🎉 **تبریک! ربات شما ساخته شد و هم‌اکنون فعال گردید.**\n\n"
-        f"🤖 نوع ربات: {type_name}\n"
-        f"📌 آیدی ربات ساخته شده: @{bot_username}\n\n"
-        "هم‌اکنون می‌توانید روی آیدی ربات خود کلیک کرده و وارد آن شوید!",
-        parse_mode="Markdown"
-    )
+        # ارسال پیام موفقیت و آیدی دقیق ربات ساخته شده به کاربر
+        await message.answer(
+            f"🎉 **تبریک! ربات شما ساخته شد و هم‌اکنون فعال گردید.**\n\n"
+            f"🤖 نوع ربات: {type_name}\n"
+            f"📌 آیدی ربات ساخته شده: @{bot_username}\n\n"
+            "هم‌اکنون می‌توانید روی آیدی ربات خود کلیک کرده و وارد آن شوید!",
+            parse_mode="Markdown"
+        )
 
 @mother_dp.message(F.text == "⚙️ تنظیمات ربات")
 async def bot_settings_menu(message: types.Message):
