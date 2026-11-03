@@ -14,6 +14,8 @@ logging.basicConfig(level=logging.INFO)
 
 # توکن ربات مادر زئوس
 MOTHER_BOT_TOKEN = "9284844625:AAFygL4sZJlLDvdgA1r1mJBv-rWehvcWX2c"
+# آیدی عددی ادمین اصلی ربات مادر
+ADMIN_ID = 8886868325
 
 bot = Bot(token=MOTHER_BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -26,7 +28,7 @@ database = {
 class BotCreation(StatesGroup):
     waiting_for_token = State()
 
-# --- بخش وب‌سرور برای جلوگیری از خطای پورت در رندر رایگان ---
+# --- بخش وب‌سرور برای رایگان ماندن در رندر ---
 class SimpleHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -38,22 +40,31 @@ def run_web_server():
     port = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), SimpleHandler)
     server.serve_forever()
-# ---------------------------------------------------------
+# ---------------------------------------------
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    keyboard = types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text="📥 دانلودر اینستاگرام"), types.KeyboardButton(text="🛡 مدیریت گروه")],
-            [types.KeyboardButton(text="🛠 سازنده"), types.KeyboardButton(text="⚙️ تنظیمات ربات")]
-        ],
-        resize_keyboard=True
-    )
+    # بررسی اینکه آیا کاربر ادمین اصلی است یا کاربر عادی
+    is_admin = (message.from_user.id == ADMIN_ID)
+    
+    keyboard_buttons = [
+        [types.KeyboardButton(text="📥 دانلودر اینستاگرام"), types.KeyboardButton(text="🛡 مدیریت گروه")],
+        [types.KeyboardButton(text="🛠 سازنده"), types.KeyboardButton(text="⚙️ تنظیمات ربات")]
+    ]
+    
+    # اگر کاربر ادمین اصلی باشد، دکمه مدیریت کل سیستم را هم می‌بیند
+    if is_admin:
+        keyboard_buttons.append([types.KeyboardButton(text="👑 پنل مدیریت ادمین کل")])
+
+    keyboard = types.ReplyKeyboardMarkup(keyboard=keyboard_buttons, resize_keyboard=True)
     
     welcome_text = (
         "سلام! خوش آمدید.\n\n"
         "به **ربات‌ساز زئوس** تنها ربات ربات‌سازی حرفه‌ای تلگرام خوش امدید. ⚡️"
     )
+    if is_admin:
+        welcome_text += "\n\n👑 *شما به عنوان ادمین اصلی ربات شناسایی شدید.*"
+
     await message.answer(welcome_text, reply_markup=keyboard, parse_mode="Markdown")
 
 @dp.message(F.text == "🛠 سازنده")
@@ -62,6 +73,21 @@ async def cmd_builder_info(message: types.Message):
     text = (
         "🤖 **این ربات توسط زئوس ساخته شده است.**\n\n"
         f"🆔 آیدی ربات سازنده: @{bot_info.username}"
+    )
+    await message.answer(text, parse_mode="Markdown")
+
+# پنل مدیریت اختصاصی ادمین کل
+@dp.message(F.text == "👑 پنل مدیریت ادمین کل")
+async def admin_panel(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("❌ شما دسترسی به این بخش ندارید.")
+        return
+        
+    total_bots = len(database["bots"])
+    text = (
+        "👑 **پنل مدیریت ادمین کل زئوس**\n\n"
+        f"🤖 تعداد کل ربات‌های ساخته شده در سیستم: `{total_bots}`\n\n"
+        "از طریق این بخش می‌توانید نظارت کامل روی ربات‌ساز داشته باشید."
     )
     await message.answer(text, parse_mode="Markdown")
 
@@ -122,7 +148,7 @@ async def bot_settings_menu(message: types.Message):
     user_id = message.from_user.id
     user_bots = [t for t, data in database["bots"].items() if data["owner_id"] == user_id]
     
-    if not user_bots:
+    if not user_bots and user_id != ADMIN_ID:
         await message.answer("شما هنوز رباتی نساخته‌اید! از دکمه‌های ربات‌ساز اقدام به ساخت ربات کنید.")
         return
 
@@ -141,8 +167,13 @@ async def handle_settings_callbacks(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     user_token = next((t for t, data in database["bots"].items() if data["owner_id"] == user_id), None)
     
-    if not user_token:
+    if not user_token and user_id != ADMIN_ID:
         await callback.answer("رباتی یافت نشد!", show_alert=True)
+        return
+
+    # اگر ادمین کل باشد و رباتی نساخته باشد، پیام مناسب بدهد
+    if not user_token and user_id == ADMIN_ID:
+        await callback.answer("شما به عنوان ادمین کل رباتی نساخته‌اید.", show_alert=True)
         return
 
     bot_data = database["bots"][user_token]
@@ -151,7 +182,7 @@ async def handle_settings_callbacks(callback: types.CallbackQuery):
         total_users = len(bot_data["users"])
         users_list = "\n".join([str(uid) for uid in list(bot_data["users"])[:20]])
         text = f"👥 **تعداد کل کاربران ربات:** {total_users}\n\n**لیست آیدی کاربران:**\n{users_list if users_list else 'کاربری ثبت نشده است.'}"
-        await callback.message.answer(text, parse_mode="Markdown")
+        await callback.message.answer(text, parse_Mode="Markdown")
         await callback.answer()
 
     elif callback.data == "show_groups":
@@ -196,11 +227,9 @@ async def group_bot_settings_command(message: types.Message):
     )
 
 async def main():
-    # اجرای وب‌سرور در ترد (Thread) جداگانه برای گول زدن رندر و جلوگیری از ارور پورت
     server_thread = Thread(target=run_web_server, daemon=True)
     server_thread.start()
     
-    # اجرای ربات تلگرام
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
